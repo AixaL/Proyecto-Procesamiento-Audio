@@ -126,6 +126,7 @@ int file_select(const struct dirent *entry){
 
 void usage(){
   cout << "Usage: ReadMicWavsMulti app_name channel_basename wav_location number_channels input_channel0 input_channel1 ... " << endl;
+  cout << "Usage: ReadMicWavsMulti ReadMicWavs wav_mic ./wav_mics 3 0 1 2 " << endl;
   cout << "\t app_name: name of JACK client where the outputs will connect to" << endl;
   cout << "\t channel_basename: basename of client inputs" << endl;
   cout << "\t wav_location: directory where wav_micX.wav's are located" << endl;
@@ -179,7 +180,8 @@ int main ( int argc, char *argv[] ){
     outputted_channels_ids[i] = channel_id;
     //if channel_id is invalid ("0" or negative), it will be ignored by "jack_connect" later on
     channel_names.push_back(string(app_name)+string(":")+string(channel_basename)+to_string(channel_id));
-    
+    printf("channel_id %d",channel_id);
+    printf("channels %d",channels);
     if(channel_id > channels || channel_id <= 0){
       printf("ReadMicWavsMulti: Output %d will not be connected; channel input %d is outside range [1,%d].\n",i+1, channel_id,channels);
     }else{
