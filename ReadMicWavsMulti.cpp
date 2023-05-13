@@ -26,7 +26,7 @@
 #include <complex>
 #include <fftw3.h>
 
-#include <Eigen/Eigenvalues>
+// #include <Eigen/Eigenvalues>
 // Eigen include
 #include <Eigen/Eigen>
 
@@ -42,6 +42,11 @@ bool READ_ENDED = false;
 
 unsigned int sr_pcm;
 
+int N = 3;
+double d = 0.18; //DIstancia en metros
+int c = 343; // Velocidad del sonido
+int r = 2; // numero de señales en el subespacio
+
 string app_name;
 string channel_basename;
 string wav_location;
@@ -51,7 +56,8 @@ vector<string> channel_names;
 SNDFILE ** wavs;
 SF_INFO *wavs_info;
 int * wavs_i;
-
+int lengthAngles;
+std::vector<std::vector<double>> music_spectrum;
 unsigned int channels;
 unsigned int outputted_channels=0;
 unsigned int outputted_channels_ids[100];
@@ -64,6 +70,8 @@ jack_port_t *input_port;
 jack_port_t **output_port;
 jack_client_t *client;
 
+std::vector<double> angles;
+
 double sample_rate;
 
 void millisleep(int milli){
@@ -71,6 +79,28 @@ void millisleep(int milli){
   st.tv_sec = 0;
   st.tv_nsec = milli*1000000L;
   nanosleep(&st, NULL);
+}
+
+std::vector<std::vector<std::complex<double>>> steeringVectors(int this_w){
+  // Compute steering vectors corresponding to values in angles
+    std::vector<std::vector<std::complex<double>>> a1(N, std::vector<std::complex<double>>(lengthAngles, 0.0));
+    for (int k = 0; k < lengthAngles; k++) {
+        a1[0][k] = 1.0; // First microphone is reference, no delay
+        a1[1][k] = std::exp(std::complex<double>(0, -2 * M_PI * this_w * d / c * std::sin(angles[k] * M_PI / 180.0))); // Second mic, delayed one distance
+        a1[2][k] = std::exp(std::complex<double>(0, -2 * M_PI * this_w * 2 * d / c * std::sin(angles[k] * M_PI / 180.0))); // Third mic, delayed double distance
+    }
+
+  return a1;
+}
+
+void music(const std::vector<std::vector<std::complex<double>>>& steeringVec, int f){
+  for (int k = 0; k < lengthAngles; k++) {
+    std::complex<double> numerator = 0.0;
+    for (int i = 0; i < N; i++) {
+        numerator += std::conj(steeringVec[i][k]) * Qn * Qn * std::conj(steeringVec[i][k]);
+    }
+    music_spectrum[f][k] = std::abs(1.0 / numerator);
+  }
 }
 
 static void signal_handler ( int sig ){
@@ -92,7 +122,7 @@ int process ( jack_nframes_t jack_buffer_size, void *arg ) {
     pDataOut[j] = (jack_default_audio_sample_t*)jack_port_get_buffer ( output_port[j], jack_buffer_size );
     read_count[j] = sf_read_double(wavs[j],read_buffer[j],jack_buffer_size);
   }
-
+  // printf("jack_buffer_size %d",jack_buffer_size);
   for (i=0;i<jack_buffer_size;i++){
     for (j=0;j<channels;j++){
       if (read_count[j] != jack_buffer_size && i >= read_count[j]){
@@ -233,6 +263,12 @@ int main ( int argc, char *argv[] ){
   sample_rate = (double)jack_get_sample_rate(client);
   int nframes = jack_get_buffer_size (client);
 
+    for (double angle = -90; angle <= 90; angle += 0.1) {
+      angles.push_back(angle);
+    }
+
+  lengthAngles = angles.size();
+  music_spectrum = std::vector<std::vector<double>>(r, std::vector<double>(lengthAngles, 0.0));
 
    //preparing FFTW3 buffers
   i_fft = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * nframes);
