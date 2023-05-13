@@ -22,6 +22,14 @@
 #include <sndfile.h>
 #include <jack/jack.h>
 
+// Include FFTW header
+#include <complex>
+#include <fftw3.h>
+
+#include <Eigen/Eigenvalues>
+// Eigen include
+#include <Eigen/Eigen>
+
 #ifndef WIN32
 #include <unistd.h>
 #endif
@@ -48,8 +56,15 @@ unsigned int channels;
 unsigned int outputted_channels=0;
 unsigned int outputted_channels_ids[100];
 
+std::complex<double> *i_fft, *i_time, *o_fft, *o_time;
+fftw_plan i_forward, o_inverse;
+
+jack_port_t *input_port;
+
 jack_port_t **output_port;
 jack_client_t *client;
+
+double sample_rate;
 
 void millisleep(int milli){
   struct timespec st = {0};
@@ -213,6 +228,21 @@ int main ( int argc, char *argv[] ){
   sr_pcm = (unsigned int) jack_get_sample_rate (client);
   cout << "ReadMicWavsMulti: JACK sample rate : "<< sr_pcm << "." << endl;
   cout << "ReadMicWavsMulti: JACK buffer size : "<< jack_get_buffer_size(client) << "." << endl;
+
+
+  sample_rate = (double)jack_get_sample_rate(client);
+  int nframes = jack_get_buffer_size (client);
+
+
+   //preparing FFTW3 buffers
+  i_fft = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * nframes);
+  i_time = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * nframes);
+  o_fft = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * nframes);
+  o_time = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * nframes);
+
+  i_forward = fftw_plan_dft_1d(nframes, reinterpret_cast<fftw_complex*>(i_time), reinterpret_cast<fftw_complex*>(i_fft), FFTW_FORWARD, FFTW_MEASURE);
+  o_inverse = fftw_plan_dft_1d(nframes, reinterpret_cast<fftw_complex*>(o_fft), reinterpret_cast<fftw_complex*>(o_time), FFTW_BACKWARD, FFTW_MEASURE);
+
   
   output_port = ( jack_port_t** ) malloc ( channels*sizeof ( jack_port_t* ) );
   for ( i = 0; i < channels; i++ ){
