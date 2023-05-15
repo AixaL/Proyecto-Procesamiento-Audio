@@ -1,3 +1,6 @@
 ./ReadMicWavsMulti ReadMicWavs wav_mic ./wav_mics 3 1 2 3
 
 g++ -g -O2 -I/usr/include/ ReadMicWavsMulti.cpp -o ReadMicWavsMulti -ljack -lsndfile
+
+g++ -g -O2 -I/usr/include/ ReadMicWavsMulti.cpp -o ReadMicWavsMulti -ljack -lsndfile -I/usr/include/eigen3 -lfftw3
+
