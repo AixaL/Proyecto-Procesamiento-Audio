@@ -38,14 +38,22 @@ using namespace std;
 
 extern  int alphasort();
 
+std::complex<double> *i_fft_4N, *i_time_4N, *o_fft_4N, *o_time_4N;
+std::complex<double> *i_fft_2N, *i_time_2N, *o_fft_2N, *o_time_2N;
+
 bool READ_ENDED = false;
 
 unsigned int sr_pcm;
 
+double sample_rate  = 48000.0;			// default sample rate [Hz]
+int nframes 		= 1024;	
 int N = 3;
 double d = 0.18; //DIstancia en metros
 int c = 343; // Velocidad del sonido
 int r = 2; // numero de señales en el subespacio
+
+int window_size, window_size_2, nframes_2;
+int kmin, kmax;	
 
 string app_name;
 string channel_basename;
@@ -71,6 +79,7 @@ jack_port_t **output_port;
 jack_client_t *client;
 
 std::vector<double> angles;
+jack_default_audio_sample_t **X_full;
 
 double sample_rate;
 
@@ -118,6 +127,30 @@ int process ( jack_nframes_t jack_buffer_size, void *arg ) {
   
   //Writing to buffers
   jack_default_audio_sample_t *pDataOut[channels];
+
+  jack_default_audio_sample_t **in;
+
+	in = (jack_default_audio_sample_t **)malloc(channels*sizeof(jack_default_audio_sample_t *));
+	for(i = 0; i < channels; ++i){
+		in[i] = (jack_default_audio_sample_t *)jack_port_get_buffer (input_ports[i], nframes);
+  }
+
+
+  //Array de ventanas
+  for (j = 0; j < n_in_channels; ++j) {
+
+		for (i = 0; i < nframes; ++i){
+			X_full[j][i] 						= X_full[j][nframes + i];
+			X_full[j][nframes + i] 				= X_full[j][window_size_2 + i];
+			X_full[j][window_size_2 + i] 		= X_full[j][window_size-nframes + i];
+			X_full[j][window_size-nframes + i] 	= X_full[j][window_size + i];
+			X_full[j][window_size + i] 			= X_full[j][window_size+nframes + i];
+			X_full[j][window_size+nframes + i] 	= in[j][i];	
+		}
+
+
+	}
+
   for (j=0;j<channels;j++){
     pDataOut[j] = (jack_default_audio_sample_t*)jack_port_get_buffer ( output_port[j], jack_buffer_size );
     read_count[j] = sf_read_double(wavs[j],read_buffer[j],jack_buffer_size);
@@ -269,6 +302,20 @@ int main ( int argc, char *argv[] ){
 
   lengthAngles = angles.size();
   music_spectrum = std::vector<std::vector<double>>(r, std::vector<double>(lengthAngles, 0.0));
+  // obtain here the delay from user and store it in 'delay' 
+	nframes 	= (int) jack_get_buffer_size (client);
+	nframes_2   = nframes/2;
+	window_size = 4*nframes;
+	window_size_2 = 2*nframes;
+	kmin = (int) (f_min/sample_rate*window_size_2);
+	kmax = (int) (f_max/sample_rate*window_size_2);
+
+  // initialization of internal buffers
+	// - overlap-add buffers
+	// X_late		= (jack_default_audio_sample_t **) calloc(n_in_channels, sizeof(jack_default_audio_sample_t*));
+	// X_early		= (jack_default_audio_sample_t **) calloc(n_in_channels, sizeof(jack_default_audio_sample_t*));
+	X_full		= (jack_default_audio_sample_t **) calloc(n_in_channels, sizeof(jack_default_audio_sample_t*));
+
 
    //preparing FFTW3 buffers
   i_fft = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * nframes);
@@ -279,6 +326,10 @@ int main ( int argc, char *argv[] ){
   i_forward = fftw_plan_dft_1d(nframes, reinterpret_cast<fftw_complex*>(i_time), reinterpret_cast<fftw_complex*>(i_fft), FFTW_FORWARD, FFTW_MEASURE);
   o_inverse = fftw_plan_dft_1d(nframes, reinterpret_cast<fftw_complex*>(o_fft), reinterpret_cast<fftw_complex*>(o_time), FFTW_BACKWARD, FFTW_MEASURE);
 
+
+  for (i = 0; i < n_in_channels; ++i) {
+		X_full[i]	= (jack_default_audio_sample_t *) calloc(window_size + window_size_2, sizeof(jack_default_audio_sample_t));
+  }	
   
   output_port = ( jack_port_t** ) malloc ( channels*sizeof ( jack_port_t* ) );
   for ( i = 0; i < channels; i++ ){
