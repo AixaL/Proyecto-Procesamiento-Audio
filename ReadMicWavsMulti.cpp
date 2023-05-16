@@ -175,47 +175,23 @@ int process ( jack_nframes_t jack_buffer_size, void *arg ) {
 
     // FFT of the 2nd window:
     for(i = nframes; i < nframes*2; i++){
-     i_time_2_ventana[i] = X_full[k][nframes*2+i];
+     i_time_2_ventana[i] = X_full[k][i];
     }
     fftw_execute(i_forward_2_ventana);
 
     // ---------------------------- 3rd window ------------------------------------------
 
     for(i = nframes*2; i < nframes*3; i++){
-      i_time_3_ventana[i] = X_full[k][nframes*3+i];
+      i_time_3_ventana[i] = X_full[k][i];
     }
     fftw_execute(i_forward_3_ventana);
 
     // ---------------------------- 4th window ------------------------------------------
 
     for(i = nframes*3; i < window_size; i++){
-      i_time_4_ventana[i] = X_full[k][window_size+i];
+      i_time_4_ventana[i] = X_full[k][i];
     }
     fftw_execute(i_forward_4_ventana);
-
-
-    
-
-    // // Asignar valores a la matriz
-    // for (int j = 0; j < 4; j++) {
-    //   std::complex<double>* ventana;
-  
-    //   if (j == 0) {
-    //     ventana = i_fft_1_ventana;
-    //   } else if (j == 1) {
-    //     ventana = i_fft_2_ventana;
-    //   } else if (j == 2) {
-    //     ventana = i_fft_3_ventana;
-    //   } else if (j == 3) {
-    //     ventana = i_fft_4_ventana;
-    //   }
-      
-    //   for (int i = 0; i < fft_size; ++i) {
-    //     frequencies[k][j][i] = ventana[i];
-    //   }
-         
-    // }
-
 
 
     // Asignar valores a la matriz
@@ -268,40 +244,15 @@ int process ( jack_nframes_t jack_buffer_size, void *arg ) {
     matriz(2,2) = finalFreqs[2][2][i];
     matriz(2,3) = finalFreqs[2][3][i];
 
+    // Calcular matriz de covarianza
+    std::cout << "--- Complex Number Matrix C:\n" << matriz << std::endl << std::endl;
 
+    std::cout << "--- C.transpose() == Matlab -> C.' :\n" << matriz.transpose() << std::endl << std::endl;
 
-
-    
-    // matriz[0][0] = finalFreqs[0][0][i];
-    // matriz[0][1] = finalFreqs[0][1][i];
-    // matriz[0][2] = finalFreqs[0][2][i];
-    // matriz[0][3] = finalFreqs[0][3][i];
-
-
-    // matriz[1][0] = finalFreqs[1][0][i];
-    // matriz[1][1] = finalFreqs[1][1][i];
-    // matriz[1][2] = finalFreqs[1][2][i];
-    // matriz[1][3] = finalFreqs[1][3][i];
-
-
-    // matriz[2][0] = finalFreqs[2][0][i];
-    // matriz[2][1] = finalFreqs[2][1][i];
-    // matriz[2][2] = finalFreqs[2][2][i];
-    // matriz[2][3] = finalFreqs[2][3][i];
-
-  std::cout << "--- Complex Number Matrix C:\n" << matriz << std::endl << std::endl;
-    // // Imprimir la matriz
-    // for (int i = 0; i < matriz.size(); ++i) {
-    //     for (int j = 0; j < matriz[i].size(); ++j) {
-    //         std::cout << "Matriz[" << i << "][" << j << "]: ";
-    //         std::cout << matriz[i][j].real() << " + " << matriz[i][j].imag() << "i" << std::endl;
-    //     }
-    // }
+    Eigen::MatrixXcd covarianza = matriz * matriz.transpose();
+    std::cout << "Matriz de covarianza:\n" << covarianza << std::endl;
 
   }
-
-
-  //Sacar la Fn de cada ventana --- matriz de covarianza
 
 
 
