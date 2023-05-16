@@ -38,7 +38,7 @@ using namespace std;
 
 extern  int alphasort();
 
-std::complex<double> *i_fft_4N, *i_time_4N, *o_fft_4N, *o_time_4N;
+std::complex<double> *i_fft_1_ventana, *i_time_1_ventana,*i_fft_2_ventana, *i_time_2_ventana, *i_fft_3_ventana, *i_time_3_ventana,*i_fft_4_ventana, *i_time_4_ventana, *o_fft_4N, *o_time_4N;
 std::complex<double> *i_fft_2N, *i_time_2N, *o_fft_2N, *o_time_2N;
 
 bool READ_ENDED = false;
@@ -54,6 +54,8 @@ int r = 2; // numero de señales en el subespacio
 
 int window_size, window_size_2, nframes_2;
 int kmin, kmax;	
+
+double *freqs;
 
 string app_name;
 string channel_basename;
@@ -71,17 +73,22 @@ unsigned int outputted_channels=0;
 unsigned int outputted_channels_ids[100];
 
 std::complex<double> *i_fft, *i_time, *o_fft, *o_time;
-fftw_plan i_forward, o_inverse;
+std::complex<double> frequencies[4][2048];
+std::complex<double> finalFreqs[3][4][2048];
+fftw_plan i_forward_1_ventana,i_forward_2_ventana,i_forward_3_ventana, i_forward_4_ventana, o_inverse;
 
 jack_port_t *input_port;
+// JACK:
+jack_port_t **input_ports;
 
 jack_port_t **output_port;
 jack_client_t *client;
 
 std::vector<double> angles;
+int fft_size;
+int buffer_size;
 jack_default_audio_sample_t **X_full;
 
-double sample_rate;
 
 void millisleep(int milli){
   struct timespec st = {0};
@@ -106,7 +113,7 @@ void music(const std::vector<std::vector<std::complex<double>>>& steeringVec, in
   for (int k = 0; k < lengthAngles; k++) {
     std::complex<double> numerator = 0.0;
     for (int i = 0; i < N; i++) {
-        numerator += std::conj(steeringVec[i][k]) * Qn * Qn * std::conj(steeringVec[i][k]);
+        // numerator += std::conj(steeringVec[i][k]) * Qn * Qn * std::conj(steeringVec[i][k]);
     }
     music_spectrum[f][k] = std::abs(1.0 / numerator);
   }
@@ -124,6 +131,12 @@ int process ( jack_nframes_t jack_buffer_size, void *arg ) {
   double read_buffer[channels][jack_buffer_size];
   int read_count[channels];
   bool ended = false;
+
+  // índice de la frecuencia más baja que queremos procesar
+  int idx_low = std::round(20 * fft_size / sample_rate);
+
+  // índice de la frecuencia más alta que queremos procesar
+  int idx_high = std::round(20000 * fft_size / sample_rate);
   
   //Writing to buffers
   jack_default_audio_sample_t *pDataOut[channels];
@@ -132,24 +145,165 @@ int process ( jack_nframes_t jack_buffer_size, void *arg ) {
 
 	in = (jack_default_audio_sample_t **)malloc(channels*sizeof(jack_default_audio_sample_t *));
 	for(i = 0; i < channels; ++i){
-		in[i] = (jack_default_audio_sample_t *)jack_port_get_buffer (input_ports[i], nframes);
+		in[i] = (jack_default_audio_sample_t *)jack_port_get_buffer (output_port[i], nframes);
+  }
+
+  // printf("fft_size: %d\n", fft_size);
+  //Array de ventanas
+  for (j = 0; j < channels; ++j) {
+
+		for (i = 0; i < nframes; ++i){
+			X_full[j][i] 						            = X_full[j][nframes + i];
+			X_full[j][nframes + i] 	            = X_full[j][nframes*2 + i];
+			X_full[j][nframes *2 + i] 	        = X_full[j][nframes * 3 + i];
+			X_full[j][nframes * 3 + i] 	        = in[j][i];	
+		}
+
+	}
+ 
+  //Convertir a Frecuencias
+  for (int k = 0; k < channels; ++k){
+    // ---------------------------- 1st window ------------------------------------------
+
+    // FFT of the 1st window:
+    for(i = 0; i < nframes; i++){
+      i_time_1_ventana[i] = X_full[k][i];
+    }
+    fftw_execute(i_forward_1_ventana);
+
+    // ---------------------------- 2nd window ------------------------------------------
+
+    // FFT of the 2nd window:
+    for(i = nframes; i < nframes*2; i++){
+     i_time_2_ventana[i] = X_full[k][nframes*2+i];
+    }
+    fftw_execute(i_forward_2_ventana);
+
+    // ---------------------------- 3rd window ------------------------------------------
+
+    for(i = nframes*2; i < nframes*3; i++){
+      i_time_3_ventana[i] = X_full[k][nframes*3+i];
+    }
+    fftw_execute(i_forward_3_ventana);
+
+    // ---------------------------- 4th window ------------------------------------------
+
+    for(i = nframes*3; i < window_size; i++){
+      i_time_4_ventana[i] = X_full[k][window_size+i];
+    }
+    fftw_execute(i_forward_4_ventana);
+
+
+    
+
+    // // Asignar valores a la matriz
+    // for (int j = 0; j < 4; j++) {
+    //   std::complex<double>* ventana;
+  
+    //   if (j == 0) {
+    //     ventana = i_fft_1_ventana;
+    //   } else if (j == 1) {
+    //     ventana = i_fft_2_ventana;
+    //   } else if (j == 2) {
+    //     ventana = i_fft_3_ventana;
+    //   } else if (j == 3) {
+    //     ventana = i_fft_4_ventana;
+    //   }
+      
+    //   for (int i = 0; i < fft_size; ++i) {
+    //     frequencies[k][j][i] = ventana[i];
+    //   }
+         
+    // }
+
+
+
+    // Asignar valores a la matriz
+    for (int j = 0; j <4; j++) {
+      for(int i = 0; i <fft_size; ++i){
+        if(j==0){
+          frequencies[j][i] = i_fft_1_ventana[i];
+        }
+        if(j==1){
+          frequencies[j][i] = i_fft_2_ventana[i];
+        }
+        if(j==2){
+          frequencies[j][i] = i_fft_3_ventana[i];
+        }
+        if(j==3){
+          frequencies[j][i] = i_fft_4_ventana[i];
+        }
+      }  
+         
+    }
+
+    for (int j = 0; j < 4; ++j) {
+        for (int i = 0; i < fft_size; ++i) {
+            finalFreqs[k][j][i] = frequencies[j][i];
+        }
+    }
+
+	}
+
+  for (int i = 0; i < fft_size; ++i) {
+    std::vector<std::vector<std::complex<double>>> matriz2(3, std::vector<std::complex<double>>(4));
+
+    Eigen::MatrixXcd matriz(3,4);
+    // std::complex<double> value = finalFreqs[k][j][i];
+
+    matriz(0,0) = finalFreqs[0][0][i];
+    matriz(0,1) = finalFreqs[0][1][i];
+    matriz(0,2) = finalFreqs[0][2][i];
+    matriz(0,3) = finalFreqs[0][3][i];
+
+
+    matriz(1,0) = finalFreqs[1][0][i];
+    matriz(1,1) = finalFreqs[1][1][i];
+    matriz(1,2) = finalFreqs[1][2][i];
+    matriz(1,3) = finalFreqs[1][3][i];
+
+
+    matriz(2,0) = finalFreqs[2][0][i];
+    matriz(2,1) = finalFreqs[2][1][i];
+    matriz(2,2) = finalFreqs[2][2][i];
+    matriz(2,3) = finalFreqs[2][3][i];
+
+
+
+
+    
+    // matriz[0][0] = finalFreqs[0][0][i];
+    // matriz[0][1] = finalFreqs[0][1][i];
+    // matriz[0][2] = finalFreqs[0][2][i];
+    // matriz[0][3] = finalFreqs[0][3][i];
+
+
+    // matriz[1][0] = finalFreqs[1][0][i];
+    // matriz[1][1] = finalFreqs[1][1][i];
+    // matriz[1][2] = finalFreqs[1][2][i];
+    // matriz[1][3] = finalFreqs[1][3][i];
+
+
+    // matriz[2][0] = finalFreqs[2][0][i];
+    // matriz[2][1] = finalFreqs[2][1][i];
+    // matriz[2][2] = finalFreqs[2][2][i];
+    // matriz[2][3] = finalFreqs[2][3][i];
+
+  std::cout << "--- Complex Number Matrix C:\n" << matriz << std::endl << std::endl;
+    // // Imprimir la matriz
+    // for (int i = 0; i < matriz.size(); ++i) {
+    //     for (int j = 0; j < matriz[i].size(); ++j) {
+    //         std::cout << "Matriz[" << i << "][" << j << "]: ";
+    //         std::cout << matriz[i][j].real() << " + " << matriz[i][j].imag() << "i" << std::endl;
+    //     }
+    // }
+
   }
 
 
-  //Array de ventanas
-  for (j = 0; j < n_in_channels; ++j) {
-
-		for (i = 0; i < nframes; ++i){
-			X_full[j][i] 						= X_full[j][nframes + i];
-			X_full[j][nframes + i] 				= X_full[j][window_size_2 + i];
-			X_full[j][window_size_2 + i] 		= X_full[j][window_size-nframes + i];
-			X_full[j][window_size-nframes + i] 	= X_full[j][window_size + i];
-			X_full[j][window_size + i] 			= X_full[j][window_size+nframes + i];
-			X_full[j][window_size+nframes + i] 	= in[j][i];	
-		}
+  //Sacar la Fn de cada ventana --- matriz de covarianza
 
 
-	}
 
   for (j=0;j<channels;j++){
     pDataOut[j] = (jack_default_audio_sample_t*)jack_port_get_buffer ( output_port[j], jack_buffer_size );
@@ -292,6 +446,24 @@ int main ( int argc, char *argv[] ){
   cout << "ReadMicWavsMulti: JACK sample rate : "<< sr_pcm << "." << endl;
   cout << "ReadMicWavsMulti: JACK buffer size : "<< jack_get_buffer_size(client) << "." << endl;
 
+  // prepare frecuency array
+  freqs = (double *) malloc(sizeof(double) * nframes);
+  freqs[0] = 0.0;
+  double f1 = sample_rate/nframes; 
+  //48000/1024
+
+  fft_size = nframes * 2;
+  buffer_size = nframes * 2;
+
+  for (int i = 1; i < nframes/2; ++i)
+  {
+    freqs[i] = f1 * i;
+    freqs[nframes-i] = -freqs[i];
+  }
+
+  freqs[nframes/2] = sample_rate/2;
+
+
 
   sample_rate = (double)jack_get_sample_rate(client);
   int nframes = jack_get_buffer_size (client);
@@ -307,33 +479,59 @@ int main ( int argc, char *argv[] ){
 	nframes_2   = nframes/2;
 	window_size = 4*nframes;
 	window_size_2 = 2*nframes;
-	kmin = (int) (f_min/sample_rate*window_size_2);
-	kmax = (int) (f_max/sample_rate*window_size_2);
+	// kmin = (int) (f_min/sample_rate*window_size_2);
+	// kmax = (int) (f_max/sample_rate*window_size_2);
 
   // initialization of internal buffers
 	// - overlap-add buffers
 	// X_late		= (jack_default_audio_sample_t **) calloc(n_in_channels, sizeof(jack_default_audio_sample_t*));
 	// X_early		= (jack_default_audio_sample_t **) calloc(n_in_channels, sizeof(jack_default_audio_sample_t*));
-	X_full		= (jack_default_audio_sample_t **) calloc(n_in_channels, sizeof(jack_default_audio_sample_t*));
+	X_full		= (jack_default_audio_sample_t **) calloc(channels, sizeof(jack_default_audio_sample_t*));
 
 
    //preparing FFTW3 buffers
-  i_fft = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * nframes);
-  i_time = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * nframes);
-  o_fft = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * nframes);
-  o_time = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * nframes);
+  i_time_1_ventana = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * fft_size);
+  i_time_2_ventana = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * fft_size);
+  i_time_3_ventana = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * fft_size);
+  i_time_4_ventana = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * fft_size);
 
-  i_forward = fftw_plan_dft_1d(nframes, reinterpret_cast<fftw_complex*>(i_time), reinterpret_cast<fftw_complex*>(i_fft), FFTW_FORWARD, FFTW_MEASURE);
-  o_inverse = fftw_plan_dft_1d(nframes, reinterpret_cast<fftw_complex*>(o_fft), reinterpret_cast<fftw_complex*>(o_time), FFTW_BACKWARD, FFTW_MEASURE);
+  // i_time = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * fft_size);
+  i_fft_1_ventana = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * fft_size);
+
+  i_fft_2_ventana = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * fft_size);
+
+  i_fft_3_ventana = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * fft_size);
+
+  i_fft_4_ventana = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * fft_size);
+  //o_time = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * fft_size);
+
+  i_forward_1_ventana = fftw_plan_dft_1d(window_size, reinterpret_cast<fftw_complex*>(i_time_1_ventana), reinterpret_cast<fftw_complex*>(i_fft_1_ventana), FFTW_FORWARD, FFTW_MEASURE);
+
+  i_forward_2_ventana = fftw_plan_dft_1d(window_size, reinterpret_cast<fftw_complex*>(i_time_2_ventana), reinterpret_cast<fftw_complex*>(i_fft_2_ventana), FFTW_FORWARD, FFTW_MEASURE);
+
+  i_forward_3_ventana = fftw_plan_dft_1d(window_size, reinterpret_cast<fftw_complex*>(i_time_3_ventana), reinterpret_cast<fftw_complex*>(i_fft_3_ventana), FFTW_FORWARD, FFTW_MEASURE);
+
+  i_forward_4_ventana = fftw_plan_dft_1d(window_size, reinterpret_cast<fftw_complex*>(i_time_4_ventana), reinterpret_cast<fftw_complex*>(i_fft_4_ventana), FFTW_FORWARD, FFTW_MEASURE);
 
 
-  for (i = 0; i < n_in_channels; ++i) {
-		X_full[i]	= (jack_default_audio_sample_t *) calloc(window_size + window_size_2, sizeof(jack_default_audio_sample_t));
+
+
+
+
+  // o_inverse = fftw_plan_dft_1d(window_size, reinterpret_cast<fftw_complex*>(o_fft), reinterpret_cast<fftw_complex*>(o_time), FFTW_BACKWARD, FFTW_MEASURE);
+
+
+  for (i = 0; i < channels; ++i) {
+		X_full[i]	= (jack_default_audio_sample_t *) calloc(window_size, sizeof(jack_default_audio_sample_t));
+
+    // X_full[i]	= (jack_default_audio_sample_t *) calloc(window_size + window_size_2, sizeof(jack_default_audio_sample_t));
+    
   }	
   
+  char port_name[16];
   output_port = ( jack_port_t** ) malloc ( channels*sizeof ( jack_port_t* ) );
   for ( i = 0; i < channels; i++ ){
-    char port_name[16];
+    
     sprintf ( port_name, "out_%d", i+1 );
     printf ("ReadMicWavsMulti: registering port %s \n", port_name);
     output_port[i] = jack_port_register ( client, port_name, JACK_DEFAULT_AUDIO_TYPE, JackPortIsOutput, 0 );
@@ -342,6 +540,16 @@ int main ( int argc, char *argv[] ){
       exit ( 1 );
     }
   }
+
+  // input_ports = (jack_port_t**) malloc(channels*sizeof(jack_port_t*));
+	// for(i = 0; i < channels; ++i) {
+	// 	// sprintf(portname, "wav_mic%d", i+1);
+	// 	input_ports[i] = jack_port_register (client, port_name, JACK_DEFAULT_AUDIO_TYPE, JackPortIsInput, 0);
+	// 	if (input_ports[i] == NULL) {
+	// 		printf("No more JACK ports available after creating input port number %d\n",i);
+	// 		exit (1);
+	// 	}
+	// }	
   
   
   if ( jack_activate ( client ) ){
