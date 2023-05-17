@@ -84,7 +84,7 @@ jack_port_t **input_ports;
 jack_port_t **output_port;
 jack_client_t *client;
 
-std::vector<double> angles;
+Eigen::VectorXd angles;
 int fft_size;
 int buffer_size;
 jack_default_audio_sample_t **X_full;
@@ -97,13 +97,14 @@ void millisleep(int milli){
   nanosleep(&st, NULL);
 }
 
-std::vector<std::vector<std::complex<double>>> steeringVectors(int this_w){
+Eigen::Matrix<std::complex<double>, Eigen::Dynamic, Eigen::Dynamic> steeringVectors(int this_w){
+  // Eigen::VectorXd angles(lengthAngles);
   // Compute steering vectors corresponding to values in angles
-    std::vector<std::vector<std::complex<double>>> a1(N, std::vector<std::complex<double>>(lengthAngles, 0.0));
+    Eigen::Matrix<std::complex<double>, Eigen::Dynamic, Eigen::Dynamic> a1(N, lengthAngles);
     for (int k = 0; k < lengthAngles; k++) {
-        a1[0][k] = 1.0; // First microphone is reference, no delay
-        a1[1][k] = std::exp(std::complex<double>(0, -2 * M_PI * this_w * d / c * std::sin(angles[k] * M_PI / 180.0))); // Second mic, delayed one distance
-        a1[2][k] = std::exp(std::complex<double>(0, -2 * M_PI * this_w * 2 * d / c * std::sin(angles[k] * M_PI / 180.0))); // Third mic, delayed double distance
+        a1(0, k) = 1.0; // First microphone is reference, no delay
+        a1(1, k) = std::exp(std::complex<double>(0, -2 * M_PI * this_w * d / c * std::sin(angles[k] * M_PI / 180.0))); // Second mic, delayed one distance
+        a1(2, k) = std::exp(std::complex<double>(0, -2 * M_PI * this_w * 2 * d / c * std::sin(angles[k] * M_PI / 180.0))); // Third mic, delayed double distance
     }
 
   return a1;
@@ -251,6 +252,81 @@ int process ( jack_nframes_t jack_buffer_size, void *arg ) {
 
     Eigen::MatrixXcd covarianza = matriz * matriz.transpose();
     std::cout << "Matriz de covarianza:\n" << covarianza << std::endl;
+
+
+    //Sacamos los eigenvalores eigenvectores
+    Eigen::ComplexEigenSolver<Eigen::MatrixXcd> eigenM(covarianza);
+    std::cout << "--- The eigenvalues of C are:\n" << eigenM.eigenvalues() << std::endl << std::endl;
+    std::cout << "--- The eigenvectors of C are (one vector per column):\n" << eigenM.eigenvectors() << std::endl << std::endl;
+	  std::cout << "--- The first eigenvector:\n" << eigenM.eigenvectors().col(0) << std::endl << std::endl;
+
+    // Obtener los eigenvalores calculados
+    Eigen::VectorXcd eigenvalues = eigenM.eigenvalues();
+
+    // Crear un vector de eigenvalores y copiar los eigenvalores a él
+    std::vector<double> eigenvalues_vec(eigenvalues.real().data(), eigenvalues.real().data() + eigenvalues.size());
+
+    // // Ordenar el vector de eigenvalores en orden descendente
+    // std::sort(eigenvalues_vec.begin(), eigenvalues_vec.end(), [](double a, double b) { return a > b; });
+
+    // Convierte los eigenvalores a un vector de valores reales y los ordena de forma descendente
+    std::vector<double> sortedEigenvalues(eigenvalues.real().data(), eigenvalues.real().data() + eigenvalues.real().size());
+    std::sort(sortedEigenvalues.rbegin(), sortedEigenvalues.rend());
+
+    std::cout << "Eigenvalores descendentes:\n";
+    for (const auto& eigenvalue : sortedEigenvalues) {
+        std::cout << eigenvalue << std::endl;
+    }
+
+    // Actualizar los eigenvectores correspondientes
+    Eigen::MatrixXcd eigenvectors = eigenM.eigenvectors();
+    for (int i = 0; i < eigenvectors.cols(); i++) {
+        int idx = std::distance(eigenvalues.real().data(), std::find(eigenvalues.real().data(), eigenvalues.real().data() + eigenvalues.size(), eigenvalues_vec[i]));
+        eigenvectors.col(i) = eigenvectors.col(idx);
+    }
+
+    std::cout << "Eigenvectores correspondientes:\n";
+    for (const auto& eigenvalue : eigenvalues_vec) {
+        int idx = std::distance(eigenvalues.real().data(), std::find(eigenvalues.real().data(), eigenvalues.real().data() + eigenvalues.size(), eigenvalue));
+        std::cout << "Eigenvalor: " << eigenvalue << std::endl;
+        std::cout << "Eigenvector:\n" << eigenvectors.col(idx) << std::endl;
+    }
+
+    // // Obtener los eigenvectores de la señal (primeros r eigenvectores ordenados)
+    // Eigen::MatrixXd Qs = eigenvectors.leftCols(r);
+
+    // // Obtener los eigenvectores del ruido (eigenvectores restantes)
+    // Eigen::MatrixXd Qn = eigenvectors.rightCols(eigenvectors.cols() - r);
+
+
+    std::vector<std::vector<std::complex<double>>> Qs(eigenvectors.size(), std::vector<std::complex<double>>(r));
+    std::vector<std::vector<std::complex<double>>> Qn(eigenvectors.size(), std::vector<std::complex<double>>(eigenvectors.cols() - r));
+    
+    for (int i = 0; i < eigenvectors.rows(); i++) {
+        for (int j = 0; j < r; j++) {
+            Qs[i][j] = eigenvectors(i,j);
+        }
+        for (int j = r; j < eigenvectors.cols(); j++) {
+            Qn[i][j - r] = eigenvectors(i,j);
+        }
+    }
+
+    // Llamada a la función steeringVectors
+    std::vector<std::vector<std::complex<double>>> a1(N, std::vector<std::complex<double>>(lengthAngles));
+    for (int k = 0; k < lengthAngles; k++) {
+        a1[0][k] = 1.0; // First microphone is reference, no delay
+        a1[1][k] = std::exp(std::complex<double>(0, -2 * M_PI * freqs[i] * d / c * std::sin(angles[k] * M_PI / 180.0))); // Second mic, delayed one distance
+        a1[2][k] = std::exp(std::complex<double>(0, -2 * M_PI * freqs[i] * 2 * d / c * std::sin(angles[k] * M_PI / 180.0))); // Third mic, delayed double distance
+    }
+
+
+
+
+
+
+    // Eigen::Matrix<std::complex<double>, Eigen::Dynamic, Eigen::Dynamic> result = steeringVectors(freqs[i]);
+
+
 
   }
 
@@ -419,9 +495,15 @@ int main ( int argc, char *argv[] ){
   sample_rate = (double)jack_get_sample_rate(client);
   int nframes = jack_get_buffer_size (client);
 
-    for (double angle = -90; angle <= 90; angle += 0.1) {
-      angles.push_back(angle);
-    }
+    const double angle_min = -90.0;
+    const double angle_max = 90.0;
+    const int num_angles = (angle_max - angle_min) / 0.1 + 1;
+
+    angles = Eigen::VectorXd::LinSpaced(num_angles, angle_min, angle_max);
+
+    std::cout << "Angles:" << std::endl;
+    std::cout << angles << std::endl;
+
 
   lengthAngles = angles.size();
   music_spectrum = std::vector<std::vector<double>>(r, std::vector<double>(lengthAngles, 0.0));
