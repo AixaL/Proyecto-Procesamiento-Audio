@@ -293,11 +293,7 @@ int process ( jack_nframes_t jack_buffer_size, void *arg ) {
     }
 
     // // Obtener los eigenvectores de la señal (primeros r eigenvectores ordenados)
-    // Eigen::MatrixXd Qs = eigenvectors.leftCols(r);
-
     // // Obtener los eigenvectores del ruido (eigenvectores restantes)
-    // Eigen::MatrixXd Qn = eigenvectors.rightCols(eigenvectors.cols() - r);
-
 
     std::vector<std::vector<std::complex<double>>> Qs(eigenvectors.size(), std::vector<std::complex<double>>(r));
     std::vector<std::vector<std::complex<double>>> Qn(eigenvectors.size(), std::vector<std::complex<double>>(eigenvectors.cols() - r));
@@ -312,14 +308,38 @@ int process ( jack_nframes_t jack_buffer_size, void *arg ) {
     }
 
     // Llamada a la función steeringVectors
-    std::vector<std::vector<std::complex<double>>> a1(N, std::vector<std::complex<double>>(lengthAngles));
+    std::vector<std::vector<std::complex<double>>> steeringVec(N, std::vector<std::complex<double>>(lengthAngles));
     for (int k = 0; k < lengthAngles; k++) {
-        a1[0][k] = 1.0; // First microphone is reference, no delay
-        a1[1][k] = std::exp(std::complex<double>(0, -2 * M_PI * freqs[i] * d / c * std::sin(angles[k] * M_PI / 180.0))); // Second mic, delayed one distance
-        a1[2][k] = std::exp(std::complex<double>(0, -2 * M_PI * freqs[i] * 2 * d / c * std::sin(angles[k] * M_PI / 180.0))); // Third mic, delayed double distance
+        steeringVec[0][k] = 1.0; // First microphone is reference, no delay
+        steeringVec[1][k] = std::exp(std::complex<double>(0, -2 * M_PI * freqs[i] * d / c * std::sin(angles[k] * M_PI / 180.0))); // Second mic, delayed one distance
+        steeringVec[2][k] = std::exp(std::complex<double>(0, -2 * M_PI * freqs[i] * 2 * d / c * std::sin(angles[k] * M_PI / 180.0))); // Third mic, delayed double distance
     }
 
 
+    // Qn * Qn´
+    std::vector<std::vector<std::complex<double>>> producto(Qn.size(), std::vector<std::complex<double>>(Qn[0].size(), 0.0));
+    for (int i = 0; i < Qn.size(); i++) {
+        for (int j = 0; j < Qn[0].size(); j++) {
+            for (int k = 0; k < Qn.size(); k++) {
+                producto[i][j] += Qn[i][k] * Qn[k][j];
+            }
+        }
+    }
+
+    // MUSIC
+    // Problema al multiplicar steeringVec * producto
+    for (int k = 0; k < lengthAngles; k++) {
+      std::complex<double> numerator = 0.0;
+
+      //a1(:,k)'
+
+      // music_spectrum(f,k)=abs(1/(a1(:,k)'*Qn*Qn'*a1(:,k)));
+      for (int i = 0; i < N; i++) {
+          numerator += std::conj(steeringVec[i][k]) * producto * std::conj(steeringVec[i][k]);
+      }
+      // Music en la frecuencia i y angulo k
+      music_spectrum[i][k] = std::abs(1.0 / numerator);
+    }
 
 
 
