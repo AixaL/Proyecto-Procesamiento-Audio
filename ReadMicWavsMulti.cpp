@@ -248,97 +248,117 @@ int process ( jack_nframes_t jack_buffer_size, void *arg ) {
     // Calcular matriz de covarianza
     std::cout << "--- Complex Number Matrix C:\n" << matriz << std::endl << std::endl;
 
-    std::cout << "--- C.transpose() == Matlab -> C.' :\n" << matriz.transpose() << std::endl << std::endl;
+    std::cout << "Freqs\n" << freqs[200] << std::endl;
+    std::cout << "Freqs22\n" << 400/sample_rate*nframes << std::endl;
+    // Eigen::MatrixXcd matriz_2(3,4);
+    // matriz_2 = matriz.adjoint();
 
-    Eigen::MatrixXcd covarianza = matriz * matriz.transpose();
+    // std::cout << "Matriz de matriz_2:\n" << matriz_2 << std::endl;
+
+    std::cout << "--- Matriz.adjoint()' :\n" << matriz.adjoint() << std::endl << std::endl;
+
+    Eigen::MatrixXcd covarianza = matriz * matriz.adjoint();
     std::cout << "Matriz de covarianza:\n" << covarianza << std::endl;
 
 
     //Sacamos los eigenvalores eigenvectores
     Eigen::ComplexEigenSolver<Eigen::MatrixXcd> eigenM(covarianza);
-    std::cout << "--- The eigenvalues of C are:\n" << eigenM.eigenvalues() << std::endl << std::endl;
-    std::cout << "--- The eigenvectors of C are (one vector per column):\n" << eigenM.eigenvectors() << std::endl << std::endl;
-	  std::cout << "--- The first eigenvector:\n" << eigenM.eigenvectors().col(0) << std::endl << std::endl;
+    std::cout << "--- The eigenvalues of eigenM are:\n" << eigenM.eigenvalues() << std::endl << std::endl;
+    std::cout << "--- The eigenvectors of eigenM are (one vector per column):\n" << eigenM.eigenvectors() << std::endl << std::endl;
+	  // std::cout << "--- The first eigenvector:\n" << eigenM.eigenvectors().col(0) << std::endl << std::endl;
 
-    // Obtener los eigenvalores calculados
+    // Obtener los eigenvalores y eigenvectores calculados
     Eigen::VectorXcd eigenvalues = eigenM.eigenvalues();
+    Eigen::MatrixXcd eigenvectors = eigenM.eigenvectors();
 
-    // Crear un vector de eigenvalores y copiar los eigenvalores a él
-    std::vector<double> eigenvalues_vec(eigenvalues.real().data(), eigenvalues.real().data() + eigenvalues.size());
 
-    // // Ordenar el vector de eigenvalores en orden descendente
-    // std::sort(eigenvalues_vec.begin(), eigenvalues_vec.end(), [](double a, double b) { return a > b; });
-
-    // Convierte los eigenvalores a un vector de valores reales y los ordena de forma descendente
-    std::vector<double> sortedEigenvalues(eigenvalues.real().data(), eigenvalues.real().data() + eigenvalues.real().size());
-    std::sort(sortedEigenvalues.rbegin(), sortedEigenvalues.rend());
-
-    std::cout << "Eigenvalores descendentes:\n";
-    for (const auto& eigenvalue : sortedEigenvalues) {
-        std::cout << eigenvalue << std::endl;
-    }
+    // std::cout << "Eigenvalores descendentes:\n";
+    // for (const auto& eigenvalue : eigenvalues) {
+    //     std::cout << eigenvalue << std::endl;
+    // }
 
     // Actualizar los eigenvectores correspondientes
-    Eigen::MatrixXcd eigenvectors = eigenM.eigenvectors();
-    for (int i = 0; i < eigenvectors.cols(); i++) {
-        int idx = std::distance(eigenvalues.real().data(), std::find(eigenvalues.real().data(), eigenvalues.real().data() + eigenvalues.size(), eigenvalues_vec[i]));
-        eigenvectors.col(i) = eigenvectors.col(idx);
-    }
+    // for (int i = 0; i < eigenvectors.cols(); i++) {
+    //     int idx = std::distance(eigenvalues.real().data(), std::find(eigenvalues.real().data(), eigenvalues.real().data() + eigenvalues.size(), eigenvalues_vec[i]));
+    //     eigenvectors.col(i) = eigenvectors.col(idx);
+    // }
 
-    std::cout << "Eigenvectores correspondientes:\n";
-    for (const auto& eigenvalue : eigenvalues_vec) {
-        int idx = std::distance(eigenvalues.real().data(), std::find(eigenvalues.real().data(), eigenvalues.real().data() + eigenvalues.size(), eigenvalue));
-        std::cout << "Eigenvalor: " << eigenvalue << std::endl;
-        std::cout << "Eigenvector:\n" << eigenvectors.col(idx) << std::endl;
-    }
+    // std::cout << "Eigenvectores correspondientes:\n";
+    // for (const auto& eigenvalue : eigenvalues) {
+    //     int idx = std::distance(eigenvalues.real().data(), std::find(eigenvalues.real().data(), eigenvalues.real().data() + eigenvalues.size(), eigenvalue));
+    //     std::cout << "Eigenvalor: " << eigenvalue << std::endl;
+    //     std::cout << "Eigenvector:\n" << eigenvectors.col(idx) << std::endl;
+    // }
 
     // // Obtener los eigenvectores de la señal (primeros r eigenvectores ordenados)
     // // Obtener los eigenvectores del ruido (eigenvectores restantes)
 
-    std::vector<std::vector<std::complex<double>>> Qs(eigenvectors.size(), std::vector<std::complex<double>>(r));
-    std::vector<std::vector<std::complex<double>>> Qn(eigenvectors.size(), std::vector<std::complex<double>>(eigenvectors.cols() - r));
     
-    for (int i = 0; i < eigenvectors.rows(); i++) {
-        for (int j = 0; j < r; j++) {
-            Qs[i][j] = eigenvectors(i,j);
-        }
-        for (int j = r; j < eigenvectors.cols(); j++) {
-            Qn[i][j - r] = eigenvectors(i,j);
+
+    Eigen::MatrixXcd Qs(eigenvectors.rows(), r );
+    // std::vector<std::vector<std::complex<double>>> Qs(eigenvectors.size(), std::vector<std::complex<double>>(r));
+
+    Eigen::MatrixXcd Qn(eigenvectors.rows(), eigenvectors.cols() - r );
+    // std::vector<std::vector<std::complex<double>>> Qn(eigenvectors.size(), std::vector<std::complex<double>>(eigenvectors.cols() - r));
+    Eigen::VectorXcd firstEigenvector = eigenvectors.col(0);
+
+    for (int i = 0; i < eigenvectors.rows(); ++i) {
+        for (int j = 0; j < eigenvectors.cols(); ++j) {
+          if(j < r){
+            Qs(i,j) = eigenvectors(i,j);
+          }else{
+            Qn(i,j-r) = eigenvectors(i,j);
+          }
         }
     }
+
+    std::cout << "Matriz Qs:" << std::endl;
+    std::cout << Qs << std::endl;
+
+    std::cout << "Matriz Qn:" << std::endl;
+    std::cout << Qn << std::endl;
+
+    
+
+    // double degrees = 150 - angles[k];
+    // double radians = degrees * M_PI / 180.0; // Convertir grados a radianes
+    // double t3 = (d / c) * cos(radians);
 
     // Llamada a la función steeringVectors
-    std::vector<std::vector<std::complex<double>>> steeringVec(N, std::vector<std::complex<double>>(lengthAngles));
+    Eigen::MatrixXcd steeringVec(N,lengthAngles);
+    // std::vector<std::vector<std::complex<double>>> steeringVec(N, std::vector<std::complex<double>>(lengthAngles));
     for (int k = 0; k < lengthAngles; k++) {
-        steeringVec[0][k] = 1.0; // First microphone is reference, no delay
-        steeringVec[1][k] = std::exp(std::complex<double>(0, -2 * M_PI * freqs[i] * d / c * std::sin(angles[k] * M_PI / 180.0))); // Second mic, delayed one distance
-        steeringVec[2][k] = std::exp(std::complex<double>(0, -2 * M_PI * freqs[i] * 2 * d / c * std::sin(angles[k] * M_PI / 180.0))); // Third mic, delayed double distance
+        double t3 = (int) (d/c)* cos(150 - angles[k]);
+        steeringVec(0 ,k) = std::complex<double>(1.0, 0.0); // First microphone is reference, no delay
+        steeringVec(1,k) = std::exp(std::complex<double>(0, -2 * M_PI * freqs[i] * d / c * sin(angles[k] * M_PI / 180.0))); // Second mic, delayed one distance
+        steeringVec(2,k) = std::exp(std::complex<double>(0, -2 * M_PI * freqs[i] * 2 * t3 * sin(angles[k] * M_PI / 180.0))); // Third mic, delayed double distance
     }
 
 
-    // Qn * Qn´
-    std::vector<std::vector<std::complex<double>>> producto(Qn.size(), std::vector<std::complex<double>>(Qn[0].size(), 0.0));
-    for (int i = 0; i < Qn.size(); i++) {
-        for (int j = 0; j < Qn[0].size(); j++) {
-            for (int k = 0; k < Qn.size(); k++) {
-                producto[i][j] += Qn[i][k] * Qn[k][j];
-            }
-        }
-    }
+    std::cout << "steeringVector completo:" << std::endl;
+    std::cout << steeringVec.col(0) << std::endl;
 
+    std::cout << "steeringVector completo:" << std::endl;
+    std::cout << steeringVec.col(0).adjoint() << std::endl;
+        
+    Eigen::MatrixXcd producto = Qn * Qn.adjoint();
+
+    std::cout << "Matriz producto:" << std::endl;
+    std::cout << producto << std::endl;
+
+    // // Qn * Qn´
+    // // 400 3000  
+    // //hacerlo con eigen 
+    // //plotear las frecuencias y ver cuales salen?
+    std::complex<double> num(1.0, 0.0);
     // MUSIC
+    // music_spectrum(f,k)=abs(1/(a1(:,k)'*Qn*Qn'*a1(:,k)));
     // Problema al multiplicar steeringVec * producto
     for (int k = 0; k < lengthAngles; k++) {
-      std::complex<double> numerator = 0.0;
-
-      //a1(:,k)'
-
-      // music_spectrum(f,k)=abs(1/(a1(:,k)'*Qn*Qn'*a1(:,k)));
-      for (int i = 0; i < N; i++) {
-          numerator += std::conj(steeringVec[i][k]) * producto * std::conj(steeringVec[i][k]);
-      }
       // Music en la frecuencia i y angulo k
-      music_spectrum[i][k] = std::abs(1.0 / numerator);
+      // Eigen::RowVectorXcd
+      // double current_music_value = std::real((a1.adjoint() * a1)(0,0)) / std::real((a1.adjoint()*Qn*Qn.adjoint()*a1)(0,0));
+      // music_spectrum[i][k] = std::abs(1.0 / (steeringVec.col(k).adjoint() * producto * steeringVec.col(k)));
     }
 
 
@@ -493,6 +513,8 @@ int main ( int argc, char *argv[] ){
   cout << "ReadMicWavsMulti: JACK sample rate : "<< sr_pcm << "." << endl;
   cout << "ReadMicWavsMulti: JACK buffer size : "<< jack_get_buffer_size(client) << "." << endl;
 
+  sample_rate = (double)jack_get_sample_rate(client);
+  int nframes = jack_get_buffer_size (client);
   // prepare frecuency array
   freqs = (double *) malloc(sizeof(double) * nframes);
   freqs[0] = 0.0;
@@ -509,20 +531,22 @@ int main ( int argc, char *argv[] ){
   }
 
   freqs[nframes/2] = sample_rate/2;
+  int cnt_tst = 0;
 
+  for (i = 0; i <= nframes/2; ++i) {
+		if (freqs[i] >= 40 && freqs[i] <= 8000){
+			printf("I: %d // CNT: %d // FREQ = %lf\n", i, cnt_tst, freqs[i]);
+			cnt_tst++;
+		}
+	}
 
-
-  sample_rate = (double)jack_get_sample_rate(client);
-  int nframes = jack_get_buffer_size (client);
+ 
 
     const double angle_min = -90.0;
     const double angle_max = 90.0;
     const int num_angles = (angle_max - angle_min) / 0.1 + 1;
 
     angles = Eigen::VectorXd::LinSpaced(num_angles, angle_min, angle_max);
-
-    std::cout << "Angles:" << std::endl;
-    std::cout << angles << std::endl;
 
 
   lengthAngles = angles.size();
