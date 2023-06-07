@@ -246,7 +246,7 @@ int process ( jack_nframes_t jack_buffer_size, void *arg ) {
 
   for (int i = 0; i < fft_size; ++i) {
 
-    if(freqs[i] > 300 && freqs[i] < 3000){
+    if(freqs[i] > 300 && freqs[i] < 8000){
 
         // std::cout << freqs[i] << std::endl;
 
