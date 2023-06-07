@@ -67,7 +67,6 @@ SNDFILE ** wavs;
 SF_INFO *wavs_info;
 int * wavs_i;
 int lengthAngles;
-std::vector<std::vector<double>> music_spectrum;
 unsigned int channels;
 unsigned int outputted_channels=0;
 unsigned int outputted_channels_ids[100];
@@ -127,18 +126,14 @@ static void signal_handler ( int sig ){
 }
 
 int process ( jack_nframes_t jack_buffer_size, void *arg ) {
+  
   //Initializing I/O variables
   unsigned int i,j;
   double read_buffer[channels][jack_buffer_size];
   int read_count[channels];
   bool ended = false;
+  Eigen::MatrixXd music_spectrum(1024, lengthAngles);
 
-  // índice de la frecuencia más baja que queremos procesar
-  int idx_low = std::round(20 * fft_size / sample_rate);
-
-  // índice de la frecuencia más alta que queremos procesar
-  int idx_high = std::round(20000 * fft_size / sample_rate);
-  
   //Writing to buffers
   jack_default_audio_sample_t *pDataOut[channels];
 
@@ -161,213 +156,180 @@ int process ( jack_nframes_t jack_buffer_size, void *arg ) {
 		}
 
 	}
- 
+
   //Convertir a Frecuencias
-  for (int k = 0; k < channels; ++k){
+  for (int k = 0; k <  channels; ++k){
     // ---------------------------- 1st window ------------------------------------------
 
     // FFT of the 1st window:
-    for(i = 0; i < nframes; i++){
+    for(int i = 0; i < nframes; i++){
       i_time_1_ventana[i] = X_full[k][i];
     }
     fftw_execute(i_forward_1_ventana);
 
     // ---------------------------- 2nd window ------------------------------------------
-
     // FFT of the 2nd window:
-    for(i = nframes; i < nframes*2; i++){
-     i_time_2_ventana[i] = X_full[k][i];
+    for(int i = nframes; i < nframes*2; i++){
+      i_time_2_ventana[i-nframes] = X_full[k][i];
+     
     }
     fftw_execute(i_forward_2_ventana);
 
     // ---------------------------- 3rd window ------------------------------------------
 
-    for(i = nframes*2; i < nframes*3; i++){
-      i_time_3_ventana[i] = X_full[k][i];
+    for(int i = nframes*2; i < nframes*3; i++){
+      i_time_3_ventana[i- nframes*2] = X_full[k][i];
     }
     fftw_execute(i_forward_3_ventana);
 
     // ---------------------------- 4th window ------------------------------------------
 
-    for(i = nframes*3; i < window_size; i++){
-      i_time_4_ventana[i] = X_full[k][i];
+    for(int i = nframes*3; i < window_size; i++){
+      i_time_4_ventana[i - nframes*3] = X_full[k][i];
     }
     fftw_execute(i_forward_4_ventana);
 
 
     // Asignar valores a la matriz
     for (int j = 0; j <4; j++) {
-      for(int i = 0; i <fft_size; ++i){
+      for(int n = 0; n <fft_size-1; ++n){
         if(j==0){
-          frequencies[j][i] = i_fft_1_ventana[i];
+          frequencies[j][n] = i_fft_1_ventana[n];
         }
         if(j==1){
-          frequencies[j][i] = i_fft_2_ventana[i];
+          frequencies[j][n] = i_fft_2_ventana[n];
         }
         if(j==2){
-          frequencies[j][i] = i_fft_3_ventana[i];
+          frequencies[j][n] = i_fft_3_ventana[n];
         }
         if(j==3){
-          frequencies[j][i] = i_fft_4_ventana[i];
+          frequencies[j][n] = i_fft_4_ventana[n];
         }
       }  
-         
+
     }
 
     for (int j = 0; j < 4; ++j) {
-        for (int i = 0; i < fft_size; ++i) {
-            finalFreqs[k][j][i] = frequencies[j][i];
+        for (int z = 0; z < fft_size; ++z) {
+            finalFreqs[k][j][z] = frequencies[j][z];
         }
     }
 
 	}
 
   for (int i = 0; i < fft_size; ++i) {
-    std::vector<std::vector<std::complex<double>>> matriz2(3, std::vector<std::complex<double>>(4));
 
-    Eigen::MatrixXcd matriz(3,4);
-    // std::complex<double> value = finalFreqs[k][j][i];
+    if(freqs[i] > 300 && freqs[i] < 3000){
 
-    matriz(0,0) = finalFreqs[0][0][i];
-    matriz(0,1) = finalFreqs[0][1][i];
-    matriz(0,2) = finalFreqs[0][2][i];
-    matriz(0,3) = finalFreqs[0][3][i];
+        std::cout << freqs[i] << std::endl;
 
 
-    matriz(1,0) = finalFreqs[1][0][i];
-    matriz(1,1) = finalFreqs[1][1][i];
-    matriz(1,2) = finalFreqs[1][2][i];
-    matriz(1,3) = finalFreqs[1][3][i];
+        Eigen::MatrixXcd matriz(3,4);
+        // std::complex<double> value = finalFreqs[k][j][i];
+
+        matriz(0,0) = finalFreqs[0][0][i];
+        matriz(0,1) = finalFreqs[0][1][i];
+        matriz(0,2) = finalFreqs[0][2][i];
+        matriz(0,3) = finalFreqs[0][3][i];
 
 
-    matriz(2,0) = finalFreqs[2][0][i];
-    matriz(2,1) = finalFreqs[2][1][i];
-    matriz(2,2) = finalFreqs[2][2][i];
-    matriz(2,3) = finalFreqs[2][3][i];
-
-    // Calcular matriz de covarianza
-    std::cout << "--- Complex Number Matrix C:\n" << matriz << std::endl << std::endl;
-
-    std::cout << "Freqs\n" << freqs[200] << std::endl;
-    std::cout << "Freqs22\n" << 400/sample_rate*nframes << std::endl;
-    // Eigen::MatrixXcd matriz_2(3,4);
-    // matriz_2 = matriz.adjoint();
-
-    // std::cout << "Matriz de matriz_2:\n" << matriz_2 << std::endl;
-
-    std::cout << "--- Matriz.adjoint()' :\n" << matriz.adjoint() << std::endl << std::endl;
-
-    Eigen::MatrixXcd covarianza = matriz * matriz.adjoint();
-    std::cout << "Matriz de covarianza:\n" << covarianza << std::endl;
+        matriz(1,0) = finalFreqs[1][0][i];
+        matriz(1,1) = finalFreqs[1][1][i];
+        matriz(1,2) = finalFreqs[1][2][i];
+        matriz(1,3) = finalFreqs[1][3][i];
 
 
-    //Sacamos los eigenvalores eigenvectores
-    Eigen::ComplexEigenSolver<Eigen::MatrixXcd> eigenM(covarianza);
-    std::cout << "--- The eigenvalues of eigenM are:\n" << eigenM.eigenvalues() << std::endl << std::endl;
-    std::cout << "--- The eigenvectors of eigenM are (one vector per column):\n" << eigenM.eigenvectors() << std::endl << std::endl;
-	  // std::cout << "--- The first eigenvector:\n" << eigenM.eigenvectors().col(0) << std::endl << std::endl;
+        matriz(2,0) = finalFreqs[2][0][i];
+        matriz(2,1) = finalFreqs[2][1][i];
+        matriz(2,2) = finalFreqs[2][2][i];
+        matriz(2,3) = finalFreqs[2][3][i];
 
-    // Obtener los eigenvalores y eigenvectores calculados
-    Eigen::VectorXcd eigenvalues = eigenM.eigenvalues();
-    Eigen::MatrixXcd eigenvectors = eigenM.eigenvectors();
+        // Calcular matriz de covarianza
+        std::cout << "--- Complex Number Matrix C:\n" << matriz << std::endl << std::endl;
+
+        // std::cout << "Matriz de matriz_2:\n" << matriz_2 << std::endl;
+
+        std::cout << "--- Matriz.adjoint()' :\n" << matriz.adjoint() << std::endl << std::endl;
+
+        Eigen::MatrixXcd covarianza = matriz * matriz.adjoint();
+        std::cout << "Matriz de covarianza:\n" << covarianza << std::endl;
 
 
-    // std::cout << "Eigenvalores descendentes:\n";
-    // for (const auto& eigenvalue : eigenvalues) {
-    //     std::cout << eigenvalue << std::endl;
-    // }
+        //Sacamos los eigenvalores eigenvectores
+        Eigen::ComplexEigenSolver<Eigen::MatrixXcd> eigenM(covarianza);
+        std::cout << "--- The eigenvalues of eigenM are:\n" << eigenM.eigenvalues() << std::endl << std::endl;
+        std::cout << "--- The eigenvectors of eigenM are (one vector per column):\n" << eigenM.eigenvectors() << std::endl << std::endl;
+        // std::cout << "--- The first eigenvector:\n" << eigenM.eigenvectors().col(0) << std::endl << std::endl;
 
-    // Actualizar los eigenvectores correspondientes
-    // for (int i = 0; i < eigenvectors.cols(); i++) {
-    //     int idx = std::distance(eigenvalues.real().data(), std::find(eigenvalues.real().data(), eigenvalues.real().data() + eigenvalues.size(), eigenvalues_vec[i]));
-    //     eigenvectors.col(i) = eigenvectors.col(idx);
-    // }
+        // Obtener los eigenvalores y eigenvectores calculados
+        Eigen::VectorXcd eigenvalues = eigenM.eigenvalues();
+        Eigen::MatrixXcd eigenvectors = eigenM.eigenvectors();
 
-    // std::cout << "Eigenvectores correspondientes:\n";
-    // for (const auto& eigenvalue : eigenvalues) {
-    //     int idx = std::distance(eigenvalues.real().data(), std::find(eigenvalues.real().data(), eigenvalues.real().data() + eigenvalues.size(), eigenvalue));
-    //     std::cout << "Eigenvalor: " << eigenvalue << std::endl;
-    //     std::cout << "Eigenvector:\n" << eigenvectors.col(idx) << std::endl;
-    // }
+        // // Obtener los eigenvectores de la señal (primeros r eigenvectores ordenados)
+        // // Obtener los eigenvectores del ruido (eigenvectores restantes)
 
-    // // Obtener los eigenvectores de la señal (primeros r eigenvectores ordenados)
-    // // Obtener los eigenvectores del ruido (eigenvectores restantes)
+        Eigen::MatrixXcd Qs(eigenvectors.rows(), r );
+        // std::vector<std::vector<std::complex<double>>> Qs(eigenvectors.size(), std::vector<std::complex<double>>(r));
+
+        Eigen::MatrixXcd Qn(eigenvectors.rows(), eigenvectors.cols() - r );
+        // std::vector<std::vector<std::complex<double>>> Qn(eigenvectors.size(), std::vector<std::complex<double>>(eigenvectors.cols() - r));
+
+        for (int i = 0; i < eigenvectors.rows(); ++i) {
+            for (int j = 0; j < eigenvectors.cols(); ++j) {
+              if(j < r){
+                Qs(i,j) = eigenvectors(i,j);
+              }else{
+                Qn(i,j-r) = eigenvectors(i,j);
+              }
+            }
+        }
+
+        std::cout << "Matriz Qs:" << std::endl;
+        std::cout << Qs << std::endl;
+
+        std::cout << "Matriz Qn:" << std::endl;
+        std::cout << Qn << std::endl;
+
+        
+
+        // double degrees = 150 - angles[k];
+        // double radians = degrees * M_PI / 180.0; // Convertir grados a radianes
+        // double t3 = (d / c) * cos(radians);
+
+        // Llamada a la función steeringVectors
+        Eigen::MatrixXcd steeringVec(N,lengthAngles);
+        // std::vector<std::vector<std::complex<double>>> steeringVec(N, std::vector<std::complex<double>>(lengthAngles));
+        for (int k = 0; k < lengthAngles; k++) {
+            double t3 = (d/c)* cos(-150 - angles[k]);
+            steeringVec(0 ,k) = std::complex<double>(1.0, 0.0); // First microphone is reference, no delay
+            steeringVec(1,k) = std::exp(std::complex<double>(0, -2 * M_PI * freqs[i] * d / c * sin(angles[k] * M_PI / 180.0))); // Second mic, delayed one distance
+            steeringVec(2,k) = std::exp(std::complex<double>(0, -2 * M_PI * freqs[i] * 2 * t3 )); // Third mic
+        }
+
+
+        std::cout << "steeringVector completo:" << std::endl;
+        std::cout << steeringVec.col(0) << std::endl;
+
+        std::cout << "steeringVector completo:" << std::endl;
+        std::cout << steeringVec.col(0).adjoint() << std::endl;
+            
+        Eigen::MatrixXcd producto = Qn * Qn.adjoint();
+
+        std::cout << "Matriz producto:" << std::endl;
+        std::cout << producto << std::endl;
 
     
+        std::complex<double> num(1.0, 0.0);
+        
+        for (int k = 0; k < lengthAngles; k++) {
+        double current_music_value = abs( num / std::real((steeringVec.col(k).adjoint()*Qn*Qn.adjoint()*steeringVec.col(k))(0,0)));
 
-    Eigen::MatrixXcd Qs(eigenvectors.rows(), r );
-    // std::vector<std::vector<std::complex<double>>> Qs(eigenvectors.size(), std::vector<std::complex<double>>(r));
+         // double current_music_value = std::abs( steeringVec(0,1) / (steeringVec.col(k).adjoint() * Qn.adjoint()* Qn * steeringVec.col(k)));
 
-    Eigen::MatrixXcd Qn(eigenvectors.rows(), eigenvectors.cols() - r );
-    // std::vector<std::vector<std::complex<double>>> Qn(eigenvectors.size(), std::vector<std::complex<double>>(eigenvectors.cols() - r));
-    Eigen::VectorXcd firstEigenvector = eigenvectors.col(0);
-
-    for (int i = 0; i < eigenvectors.rows(); ++i) {
-        for (int j = 0; j < eigenvectors.cols(); ++j) {
-          if(j < r){
-            Qs(i,j) = eigenvectors(i,j);
-          }else{
-            Qn(i,j-r) = eigenvectors(i,j);
-          }
+        std::cout << current_music_value << std::endl;
+        music_spectrum(i,k) = current_music_value;
         }
     }
-
-    std::cout << "Matriz Qs:" << std::endl;
-    std::cout << Qs << std::endl;
-
-    std::cout << "Matriz Qn:" << std::endl;
-    std::cout << Qn << std::endl;
-
-    
-
-    // double degrees = 150 - angles[k];
-    // double radians = degrees * M_PI / 180.0; // Convertir grados a radianes
-    // double t3 = (d / c) * cos(radians);
-
-    // Llamada a la función steeringVectors
-    Eigen::MatrixXcd steeringVec(N,lengthAngles);
-    // std::vector<std::vector<std::complex<double>>> steeringVec(N, std::vector<std::complex<double>>(lengthAngles));
-    for (int k = 0; k < lengthAngles; k++) {
-        double t3 = (int) (d/c)* cos(150 - angles[k]);
-        steeringVec(0 ,k) = std::complex<double>(1.0, 0.0); // First microphone is reference, no delay
-        steeringVec(1,k) = std::exp(std::complex<double>(0, -2 * M_PI * freqs[i] * d / c * sin(angles[k] * M_PI / 180.0))); // Second mic, delayed one distance
-        steeringVec(2,k) = std::exp(std::complex<double>(0, -2 * M_PI * freqs[i] * 2 * t3 * sin(angles[k] * M_PI / 180.0))); // Third mic, delayed double distance
-    }
-
-
-    std::cout << "steeringVector completo:" << std::endl;
-    std::cout << steeringVec.col(0) << std::endl;
-
-    std::cout << "steeringVector completo:" << std::endl;
-    std::cout << steeringVec.col(0).adjoint() << std::endl;
-        
-    Eigen::MatrixXcd producto = Qn * Qn.adjoint();
-
-    std::cout << "Matriz producto:" << std::endl;
-    std::cout << producto << std::endl;
-
-    // // Qn * Qn´
-    // // 400 3000  
-    // //hacerlo con eigen 
-    // //plotear las frecuencias y ver cuales salen?
-    std::complex<double> num(1.0, 0.0);
-    // MUSIC
-    // music_spectrum(f,k)=abs(1/(a1(:,k)'*Qn*Qn'*a1(:,k)));
-    // Problema al multiplicar steeringVec * producto
-    for (int k = 0; k < lengthAngles; k++) {
-      // Music en la frecuencia i y angulo k
-      // Eigen::RowVectorXcd
-      // double current_music_value = std::real((a1.adjoint() * a1)(0,0)) / std::real((a1.adjoint()*Qn*Qn.adjoint()*a1)(0,0));
-      // music_spectrum[i][k] = std::abs(1.0 / (steeringVec.col(k).adjoint() * producto * steeringVec.col(k)));
-    }
-
-
-
-
-    // Eigen::Matrix<std::complex<double>, Eigen::Dynamic, Eigen::Dynamic> result = steeringVectors(freqs[i]);
-
-
-
   }
 
 
@@ -532,25 +494,16 @@ int main ( int argc, char *argv[] ){
 
   freqs[nframes/2] = sample_rate/2;
   int cnt_tst = 0;
-
-  for (i = 0; i <= nframes/2; ++i) {
-		if (freqs[i] >= 40 && freqs[i] <= 8000){
-			printf("I: %d // CNT: %d // FREQ = %lf\n", i, cnt_tst, freqs[i]);
-			cnt_tst++;
-		}
-	}
-
  
+  const double angle_min = -180.0;
+  const double angle_max = 180.0;
+  const int num_angles = 100;
 
-    const double angle_min = -90.0;
-    const double angle_max = 90.0;
-    const int num_angles = (angle_max - angle_min) / 0.1 + 1;
-
-    angles = Eigen::VectorXd::LinSpaced(num_angles, angle_min, angle_max);
+  angles = Eigen::VectorXd::LinSpaced(num_angles, angle_min, angle_max);
 
 
   lengthAngles = angles.size();
-  music_spectrum = std::vector<std::vector<double>>(r, std::vector<double>(lengthAngles, 0.0));
+  std::cout << lengthAngles << std::endl;
   // obtain here the delay from user and store it in 'delay' 
 	nframes 	= (int) jack_get_buffer_size (client);
 	nframes_2   = nframes/2;
@@ -582,13 +535,13 @@ int main ( int argc, char *argv[] ){
   i_fft_4_ventana = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * fft_size);
   //o_time = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * fft_size);
 
-  i_forward_1_ventana = fftw_plan_dft_1d(window_size, reinterpret_cast<fftw_complex*>(i_time_1_ventana), reinterpret_cast<fftw_complex*>(i_fft_1_ventana), FFTW_FORWARD, FFTW_MEASURE);
+  i_forward_1_ventana = fftw_plan_dft_1d(fft_size, reinterpret_cast<fftw_complex*>(i_time_1_ventana), reinterpret_cast<fftw_complex*>(i_fft_1_ventana), FFTW_FORWARD, FFTW_MEASURE);
 
-  i_forward_2_ventana = fftw_plan_dft_1d(window_size, reinterpret_cast<fftw_complex*>(i_time_2_ventana), reinterpret_cast<fftw_complex*>(i_fft_2_ventana), FFTW_FORWARD, FFTW_MEASURE);
+  i_forward_2_ventana = fftw_plan_dft_1d(fft_size, reinterpret_cast<fftw_complex*>(i_time_2_ventana), reinterpret_cast<fftw_complex*>(i_fft_2_ventana), FFTW_FORWARD, FFTW_MEASURE);
 
-  i_forward_3_ventana = fftw_plan_dft_1d(window_size, reinterpret_cast<fftw_complex*>(i_time_3_ventana), reinterpret_cast<fftw_complex*>(i_fft_3_ventana), FFTW_FORWARD, FFTW_MEASURE);
+  i_forward_3_ventana = fftw_plan_dft_1d(fft_size, reinterpret_cast<fftw_complex*>(i_time_3_ventana), reinterpret_cast<fftw_complex*>(i_fft_3_ventana), FFTW_FORWARD, FFTW_MEASURE);
 
-  i_forward_4_ventana = fftw_plan_dft_1d(window_size, reinterpret_cast<fftw_complex*>(i_time_4_ventana), reinterpret_cast<fftw_complex*>(i_fft_4_ventana), FFTW_FORWARD, FFTW_MEASURE);
+  i_forward_4_ventana = fftw_plan_dft_1d(fft_size, reinterpret_cast<fftw_complex*>(i_time_4_ventana), reinterpret_cast<fftw_complex*>(i_fft_4_ventana), FFTW_FORWARD, FFTW_MEASURE);
 
 
 
