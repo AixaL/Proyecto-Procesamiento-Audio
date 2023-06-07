@@ -38,8 +38,9 @@ using namespace std;
 
 extern  int alphasort();
 
-std::complex<double> *i_fft_1_ventana, *i_time_1_ventana,*i_fft_2_ventana, *i_time_2_ventana, *i_fft_3_ventana, *i_time_3_ventana,*i_fft_4_ventana, *i_time_4_ventana, *o_fft_4N, *o_time_4N;
+std::complex<double> *i_fft_1_ventana, *i_time_1_ventana,*i_fft_2_ventana, *i_time_2_ventana, *i_fft_3_ventana, *i_time_3_ventana,*i_fft_4_ventana, *i_time_4_ventana, *o_fft_4N, *o_time_4N, *i_fft_5_ventana, *i_time_5_ventana, *i_fft_6_ventana, *i_time_6_ventana, *i_fft_7_ventana, *i_time_7_ventana, *i_fft_8_ventana, *i_time_8_ventana ;
 std::complex<double> *i_fft_2N, *i_time_2N, *o_fft_2N, *o_time_2N;
+
 
 bool READ_ENDED = false;
 
@@ -74,9 +75,9 @@ unsigned int outputted_channels=0;
 unsigned int outputted_channels_ids[100];
 
 std::complex<double> *i_fft, *i_time, *o_fft, *o_time;
-std::complex<double> frequencies[4][2048];
-std::complex<double> finalFreqs[3][4][2048];
-fftw_plan i_forward_1_ventana,i_forward_2_ventana,i_forward_3_ventana, i_forward_4_ventana, o_inverse;
+std::complex<double> frequencies[8][2048];
+std::complex<double> finalFreqs[3][8][2048];
+fftw_plan i_forward_1_ventana,i_forward_2_ventana,i_forward_3_ventana, i_forward_4_ventana, i_forward_5_ventana, i_forward_6_ventana, i_forward_7_ventana, i_forward_8_ventana, o_inverse;
 
 jack_port_t *input_port;
 // JACK:
@@ -131,7 +132,10 @@ int process ( jack_nframes_t jack_buffer_size, void *arg ) {
 			X_full[j][i] 						            = X_full[j][nframes + i];
 			X_full[j][nframes + i] 	            = X_full[j][nframes*2 + i];
 			X_full[j][nframes *2 + i] 	        = X_full[j][nframes * 3 + i];
-			X_full[j][nframes * 3 + i] 	        = in[j][i];	
+      X_full[j][nframes *3 + i] 	        = X_full[j][nframes * 4 + i];
+      X_full[j][nframes *4 + i] 	        = X_full[j][nframes * 5 + i];
+      X_full[j][nframes *5 + i] 	        = X_full[j][nframes * 6 + i];
+			X_full[j][nframes * 7 + i] 	        = in[j][i];	
 		}
 
 	}
@@ -163,14 +167,45 @@ int process ( jack_nframes_t jack_buffer_size, void *arg ) {
 
     // ---------------------------- 4th window ------------------------------------------
 
-    for(int i = nframes*3; i < window_size; i++){
+    for(int i = nframes*3; i < nframes*4; i++){
       i_time_4_ventana[i - nframes*3] = X_full[k][i];
     }
     fftw_execute(i_forward_4_ventana);
 
 
+    // ---------------------------- 5th window ------------------------------------------
+
+    for(int i = nframes*4; i < nframes*5; i++){
+      i_time_5_ventana[i - nframes*4] = X_full[k][i];
+    }
+    fftw_execute(i_forward_5_ventana);
+
+
+    // ---------------------------- 6th window ------------------------------------------
+
+    for(int i = nframes*5; i < nframes*6; i++){
+      i_time_6_ventana[i - nframes*6] = X_full[k][i];
+    }
+    fftw_execute(i_forward_6_ventana);
+
+    // ---------------------------- 7th window ------------------------------------------
+
+    for(int i = nframes*6; i < nframes*7; i++){
+      i_time_7_ventana[i - nframes*6] = X_full[k][i];
+    }
+    fftw_execute(i_forward_7_ventana);
+
+  // ---------------------------- 8th window ------------------------------------------
+
+    for(int i = nframes*7; i < window_size; i++){
+      i_time_8_ventana[i - nframes*7] = X_full[k][i];
+    }
+    fftw_execute(i_forward_8_ventana);
+
+
+
     // Asignar valores a la matriz
-    for (int j = 0; j <4; j++) {
+    for (int j = 0; j <8; j++) {
       for(int n = 0; n <fft_size-1; ++n){
         if(j==0){
           frequencies[j][n] = i_fft_1_ventana[n];
@@ -184,11 +219,24 @@ int process ( jack_nframes_t jack_buffer_size, void *arg ) {
         if(j==3){
           frequencies[j][n] = i_fft_4_ventana[n];
         }
+
+        if(j==4){
+          frequencies[j][n] = i_fft_5_ventana[n];
+        }
+        if(j==5){
+          frequencies[j][n] = i_fft_6_ventana[n];
+        }
+        if(j==6){
+          frequencies[j][n] = i_fft_7_ventana[n];
+        }
+        if(j==7){
+          frequencies[j][n] = i_fft_8_ventana[n];
+        }
       }  
 
     }
 
-    for (int j = 0; j < 4; ++j) {
+    for (int j = 0; j < 8; ++j) {
         for (int z = 0; z < fft_size; ++z) {
             finalFreqs[k][j][z] = frequencies[j][z];
         }
@@ -203,25 +251,38 @@ int process ( jack_nframes_t jack_buffer_size, void *arg ) {
         // std::cout << freqs[i] << std::endl;
 
 
-        Eigen::MatrixXcd matriz(3,4);
+        Eigen::MatrixXcd matriz(3,8);
         // std::complex<double> value = finalFreqs[k][j][i];
 
         matriz(0,0) = finalFreqs[0][0][i];
         matriz(0,1) = finalFreqs[0][1][i];
         matriz(0,2) = finalFreqs[0][2][i];
         matriz(0,3) = finalFreqs[0][3][i];
+        matriz(0,4) = finalFreqs[0][4][i];
+        matriz(0,5) = finalFreqs[0][5][i];
+        matriz(0,6) = finalFreqs[0][6][i];
+        matriz(0,7) = finalFreqs[0][7][i];
 
 
         matriz(1,0) = finalFreqs[1][0][i];
         matriz(1,1) = finalFreqs[1][1][i];
         matriz(1,2) = finalFreqs[1][2][i];
         matriz(1,3) = finalFreqs[1][3][i];
+        matriz(1,4) = finalFreqs[1][4][i];
+        matriz(1,5) = finalFreqs[1][5][i];
+        matriz(1,6) = finalFreqs[1][6][i];
+        matriz(1,7) = finalFreqs[1][7][i];
+
 
 
         matriz(2,0) = finalFreqs[2][0][i];
         matriz(2,1) = finalFreqs[2][1][i];
         matriz(2,2) = finalFreqs[2][2][i];
         matriz(2,3) = finalFreqs[2][3][i];
+        matriz(2,4) = finalFreqs[2][4][i];
+        matriz(2,5) = finalFreqs[2][5][i];
+        matriz(2,6) = finalFreqs[2][6][i];
+        matriz(2,7) = finalFreqs[2][7][i];
 
         // Calcular matriz de covarianza
         // std::cout << "--- Complex Number Matrix C:\n" << matriz << std::endl << std::endl;
@@ -305,9 +366,10 @@ int process ( jack_nframes_t jack_buffer_size, void *arg ) {
 
          // double current_music_value = std::abs( steeringVec(0,1) / (steeringVec.col(k).adjoint() * Qn.adjoint()* Qn * steeringVec.col(k)));
          
-          if(current_music_value > 100000.00){
+          if(current_music_value > 1000000.00){
              std::cout << current_music_value << std::endl;
              std::cout << "Angulos : " << angles[k] << std::endl;
+             std::cout << "Frecuencia : " << freqs[i] << std::endl;
              music_spectrum(i,k) = current_music_value;
           }
         
@@ -478,8 +540,8 @@ int main ( int argc, char *argv[] ){
   freqs[nframes/2] = sample_rate/2;
   int cnt_tst = 0;
  
-  const double angle_min = -180.0;
-  const double angle_max = 180.0;
+  const double angle_min = -100.0;
+  const double angle_max = 100.0;
   const int num_angles = 100;
 
   angles = Eigen::VectorXd::LinSpaced(num_angles, angle_min, angle_max);
@@ -490,7 +552,7 @@ int main ( int argc, char *argv[] ){
   // obtain here the delay from user and store it in 'delay' 
 	nframes 	= (int) jack_get_buffer_size (client);
 	nframes_2   = nframes/2;
-	window_size = 4*nframes;
+	window_size = 8*nframes;
 	window_size_2 = 2*nframes;
 	// kmin = (int) (f_min/sample_rate*window_size_2);
 	// kmax = (int) (f_max/sample_rate*window_size_2);
@@ -507,6 +569,10 @@ int main ( int argc, char *argv[] ){
   i_time_2_ventana = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * fft_size);
   i_time_3_ventana = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * fft_size);
   i_time_4_ventana = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * fft_size);
+  i_time_5_ventana = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * fft_size);
+  i_time_6_ventana = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * fft_size);
+  i_time_7_ventana = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * fft_size);
+  i_time_8_ventana = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * fft_size);
 
   // i_time = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * fft_size);
   i_fft_1_ventana = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * fft_size);
@@ -516,6 +582,19 @@ int main ( int argc, char *argv[] ){
   i_fft_3_ventana = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * fft_size);
 
   i_fft_4_ventana = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * fft_size);
+
+  i_fft_5_ventana = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * fft_size);
+
+  i_fft_6_ventana = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * fft_size);
+
+  i_fft_7_ventana = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * fft_size);
+
+  i_fft_8_ventana = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * fft_size);
+
+
+
+
+
   //o_time = (std::complex<double>*) fftw_malloc(sizeof(std::complex<double>) * fft_size);
 
   i_forward_1_ventana = fftw_plan_dft_1d(fft_size, reinterpret_cast<fftw_complex*>(i_time_1_ventana), reinterpret_cast<fftw_complex*>(i_fft_1_ventana), FFTW_FORWARD, FFTW_MEASURE);
@@ -525,6 +604,14 @@ int main ( int argc, char *argv[] ){
   i_forward_3_ventana = fftw_plan_dft_1d(fft_size, reinterpret_cast<fftw_complex*>(i_time_3_ventana), reinterpret_cast<fftw_complex*>(i_fft_3_ventana), FFTW_FORWARD, FFTW_MEASURE);
 
   i_forward_4_ventana = fftw_plan_dft_1d(fft_size, reinterpret_cast<fftw_complex*>(i_time_4_ventana), reinterpret_cast<fftw_complex*>(i_fft_4_ventana), FFTW_FORWARD, FFTW_MEASURE);
+
+  i_forward_5_ventana = fftw_plan_dft_1d(fft_size, reinterpret_cast<fftw_complex*>(i_time_5_ventana), reinterpret_cast<fftw_complex*>(i_fft_5_ventana), FFTW_FORWARD, FFTW_MEASURE);
+
+  i_forward_6_ventana = fftw_plan_dft_1d(fft_size, reinterpret_cast<fftw_complex*>(i_time_6_ventana), reinterpret_cast<fftw_complex*>(i_fft_6_ventana), FFTW_FORWARD, FFTW_MEASURE);
+  
+  i_forward_7_ventana = fftw_plan_dft_1d(fft_size, reinterpret_cast<fftw_complex*>(i_time_7_ventana), reinterpret_cast<fftw_complex*>(i_fft_7_ventana), FFTW_FORWARD, FFTW_MEASURE);
+
+  i_forward_8_ventana = fftw_plan_dft_1d(fft_size, reinterpret_cast<fftw_complex*>(i_time_8_ventana), reinterpret_cast<fftw_complex*>(i_fft_8_ventana), FFTW_FORWARD, FFTW_MEASURE);
 
 
 
