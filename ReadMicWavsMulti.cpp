@@ -57,6 +57,8 @@ int kmin, kmax;
 
 double *freqs;
 
+// ANGULOS -30, 90
+
 string app_name;
 string channel_basename;
 string wav_location;
@@ -94,29 +96,6 @@ void millisleep(int milli){
   st.tv_sec = 0;
   st.tv_nsec = milli*1000000L;
   nanosleep(&st, NULL);
-}
-
-Eigen::Matrix<std::complex<double>, Eigen::Dynamic, Eigen::Dynamic> steeringVectors(int this_w){
-  // Eigen::VectorXd angles(lengthAngles);
-  // Compute steering vectors corresponding to values in angles
-    Eigen::Matrix<std::complex<double>, Eigen::Dynamic, Eigen::Dynamic> a1(N, lengthAngles);
-    for (int k = 0; k < lengthAngles; k++) {
-        a1(0, k) = 1.0; // First microphone is reference, no delay
-        a1(1, k) = std::exp(std::complex<double>(0, -2 * M_PI * this_w * d / c * std::sin(angles[k] * M_PI / 180.0))); // Second mic, delayed one distance
-        a1(2, k) = std::exp(std::complex<double>(0, -2 * M_PI * this_w * 2 * d / c * std::sin(angles[k] * M_PI / 180.0))); // Third mic, delayed double distance
-    }
-
-  return a1;
-}
-
-void music(const std::vector<std::vector<std::complex<double>>>& steeringVec, int f){
-  for (int k = 0; k < lengthAngles; k++) {
-    std::complex<double> numerator = 0.0;
-    for (int i = 0; i < N; i++) {
-        // numerator += std::conj(steeringVec[i][k]) * Qn * Qn * std::conj(steeringVec[i][k]);
-    }
-    music_spectrum[f][k] = std::abs(1.0 / numerator);
-  }
 }
 
 static void signal_handler ( int sig ){
@@ -221,7 +200,7 @@ int process ( jack_nframes_t jack_buffer_size, void *arg ) {
 
     if(freqs[i] > 300 && freqs[i] < 3000){
 
-        std::cout << freqs[i] << std::endl;
+        // std::cout << freqs[i] << std::endl;
 
 
         Eigen::MatrixXcd matriz(3,4);
@@ -245,21 +224,21 @@ int process ( jack_nframes_t jack_buffer_size, void *arg ) {
         matriz(2,3) = finalFreqs[2][3][i];
 
         // Calcular matriz de covarianza
-        std::cout << "--- Complex Number Matrix C:\n" << matriz << std::endl << std::endl;
+        // std::cout << "--- Complex Number Matrix C:\n" << matriz << std::endl << std::endl;
 
         // std::cout << "Matriz de matriz_2:\n" << matriz_2 << std::endl;
 
-        std::cout << "--- Matriz.adjoint()' :\n" << matriz.adjoint() << std::endl << std::endl;
+        // std::cout << "--- Matriz.adjoint()' :\n" << matriz.adjoint() << std::endl << std::endl;
 
         Eigen::MatrixXcd covarianza = matriz * matriz.adjoint();
-        std::cout << "Matriz de covarianza:\n" << covarianza << std::endl;
+        // std::cout << "Matriz de covarianza:\n" << covarianza << std::endl;
 
 
         //Sacamos los eigenvalores eigenvectores
         Eigen::ComplexEigenSolver<Eigen::MatrixXcd> eigenM(covarianza);
-        std::cout << "--- The eigenvalues of eigenM are:\n" << eigenM.eigenvalues() << std::endl << std::endl;
-        std::cout << "--- The eigenvectors of eigenM are (one vector per column):\n" << eigenM.eigenvectors() << std::endl << std::endl;
-        // std::cout << "--- The first eigenvector:\n" << eigenM.eigenvectors().col(0) << std::endl << std::endl;
+
+        // std::cout << "--- The eigenvalues of eigenM are:\n" << eigenM.eigenvalues() << std::endl << std::endl;
+        // std::cout << "--- The eigenvectors of eigenM are (one vector per column):\n" << eigenM.eigenvectors() << std::endl << std::endl;
 
         // Obtener los eigenvalores y eigenvectores calculados
         Eigen::VectorXcd eigenvalues = eigenM.eigenvalues();
@@ -284,11 +263,11 @@ int process ( jack_nframes_t jack_buffer_size, void *arg ) {
             }
         }
 
-        std::cout << "Matriz Qs:" << std::endl;
-        std::cout << Qs << std::endl;
+        // std::cout << "Matriz Qs:" << std::endl;
+        // std::cout << Qs << std::endl;
 
-        std::cout << "Matriz Qn:" << std::endl;
-        std::cout << Qn << std::endl;
+        // std::cout << "Matriz Qn:" << std::endl;
+        // std::cout << Qn << std::endl;
 
         
 
@@ -307,16 +286,16 @@ int process ( jack_nframes_t jack_buffer_size, void *arg ) {
         }
 
 
-        std::cout << "steeringVector completo:" << std::endl;
-        std::cout << steeringVec.col(0) << std::endl;
+        // std::cout << "steeringVector completo:" << std::endl;
+        // std::cout << steeringVec.col(0) << std::endl;
 
-        std::cout << "steeringVector completo:" << std::endl;
-        std::cout << steeringVec.col(0).adjoint() << std::endl;
+        // std::cout << "steeringVector completo:" << std::endl;
+        // std::cout << steeringVec.col(0).adjoint() << std::endl;
             
         Eigen::MatrixXcd producto = Qn * Qn.adjoint();
 
-        std::cout << "Matriz producto:" << std::endl;
-        std::cout << producto << std::endl;
+        // std::cout << "Matriz producto:" << std::endl;
+        // std::cout << producto << std::endl;
 
     
         std::complex<double> num(1.0, 0.0);
@@ -325,9 +304,13 @@ int process ( jack_nframes_t jack_buffer_size, void *arg ) {
         double current_music_value = abs( num / std::real((steeringVec.col(k).adjoint()*Qn*Qn.adjoint()*steeringVec.col(k))(0,0)));
 
          // double current_music_value = std::abs( steeringVec(0,1) / (steeringVec.col(k).adjoint() * Qn.adjoint()* Qn * steeringVec.col(k)));
-
-        std::cout << current_music_value << std::endl;
-        music_spectrum(i,k) = current_music_value;
+         
+          if(current_music_value > 100000.00){
+             std::cout << current_music_value << std::endl;
+             std::cout << "Angulos : " << angles[k] << std::endl;
+             music_spectrum(i,k) = current_music_value;
+          }
+        
         }
     }
   }
